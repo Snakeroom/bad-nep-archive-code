@@ -53,7 +53,7 @@ def fetch_http(url: str) -> bytes:
 
 
 @app.task()
-def get_non_transparent(content: bytes):
+def get_non_transparent(board, content: bytes):
     # https://stackoverflow.com/questions/60051941/find-the-coordinates-in-an-image-where-a-specified-colour-is-detected
     f_data = BytesIO(content)
 
@@ -79,6 +79,7 @@ def get_non_transparent(content: bytes):
                     {
                         "x": x,
                         "y": y,
+                        "board": board,
                     }
                 ),
             )
@@ -96,7 +97,7 @@ def get_bucket(name: str):
     autoretry_for=(TooManyRequests,),
     retry_backoff=2,
 )
-def download_url(url: str):
+def download_url(board: int, url: str):
     bucket = get_bucket("erin-reddit-afd2022")
 
     with ctx_redis() as redis:
@@ -112,7 +113,7 @@ def download_url(url: str):
             bucket.upload_bytes(data, filename)
 
     # Also kick off the image parsing loop.
-    get_non_transparent.delay(data)
+    get_non_transparent.delay(board, data)
 
 
 @app.task()

@@ -13,6 +13,7 @@ from placedump.common import ctx_aioredis, get_token, headers
 from placedump.tasks.parse import parse_message
 
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 tasks = []
 
@@ -82,9 +83,18 @@ async def push_to_key(redis: aioredis.Redis, key: str, payload: dict):
     parse_message.delay(message)
 
 
+async def get_meta() -> dict:
+    async with ctx_aioredis() as redis:
+        result = await redis.hgetall("place:meta")
+        return result or {}
+
+
 async def connect_socket(session: aiohttp.ClientSession, url: str):
     token = await get_token()
-    print(token)
+    meta = await get_meta()
+
+    log.info("socket connecting")
+    log.info(meta)
 
     async with session.ws_connect(
         url,
@@ -93,6 +103,7 @@ async def connect_socket(session: aiohttp.ClientSession, url: str):
             "Origin": "https://hot-potato.reddit.com",
         },
     ) as ws:
+        log.info("socket connected")
         await ws.send_str(
             json.dumps(
                 {
@@ -122,26 +133,30 @@ async def connect_socket(session: aiohttp.ClientSession, url: str):
             }
         )
 
-        await ws.send_json(
-            {
-                "id": "2",
-                "payload": {
-                    "extensions": {},
-                    "operationName": "replace",
-                    "query": PAYLOAD_REPLACE,
-                    "variables": {
-                        "input": {
-                            "channel": {
-                                "category": "CANVAS",
-                                "tag": "0",
-                                "teamOwner": "AFD2022",
+        highest_board = int(meta.get("index", "0"))
+
+        for x in range(0, highest_board + 1):
+            log.info("launching for board %d, ws id %d", x, 2 + x)
+            await ws.send_json(
+                {
+                    "id": str(2 + highest_board),
+                    "payload": {
+                        "extensions": {},
+                        "operationName": "replace",
+                        "query": PAYLOAD_REPLACE,
+                        "variables": {
+                            "input": {
+                                "channel": {
+                                    "category": "CANVAS",
+                                    "tag": str(x),
+                                    "teamOwner": "AFD2022",
+                                }
                             }
-                        }
+                        },
                     },
-                },
-                "type": "start",
-            }
-        )
+                    "type": "start",
+                }
+            )
 
         socket_key = "socket:snakebin"
         async with ctx_aioredis(decode_responses=False) as redis:
