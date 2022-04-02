@@ -12,7 +12,7 @@ from b2sdk.exception import TooManyRequests
 from gql import gql
 from PIL import Image
 from placedump.common import ctx_redis, get_b2_api, get_gql_client, get_redis
-from placedump.model import Pixel, sm
+from placedump.model import URL, Pixel, sm
 from placedump.tasks import app
 from pottery import Redlock
 from sqlalchemy.dialects.postgresql import insert
@@ -110,10 +110,23 @@ def download_url(board: int, url: str):
             data = fetch_http(url)
             filename = url.replace("https://", "")
             log.info(f"{url}, {len(data)} bytes.")
+
+            # Upload to B2.
             bucket.upload_bytes(data, filename)
 
-    # Also kick off the image parsing loop.
-    get_non_transparent.delay(board, data)
+            # Kick off the image parsing loop.
+            get_non_transparent.delay(board, data)
+
+            # Save URL to DB.
+            with sm() as db:
+                db.execute(
+                    insert(URL)
+                    .values(
+                        url=url,
+                    )
+                    .on_conflict_do_nothing(index_elements=["url"])
+                )
+                db.commit()
 
 
 @app.task()
@@ -147,44 +160,6 @@ def update_pixel(board_id: int, x: int, y: int, pixel_data: dict):
             )
         )
         db.commit()
-
-
-@app.task
-def get_pixels(pixels, push: bool = True):
-    gql_client = get_gql_client()
-    variables = {}
-    pixels_index = {}
-
-    for index, pixel in enumerate(pixels):
-        x, y = pixel
-        x = int(x)
-        y = int(y)
-
-        variables["input" + str(index + 1)] = {
-            "actionName": "r/replace:get_tile_history",
-            "PixelMessageData": {
-                "canvasIndex": 0,
-                "colorIndex": 0,
-                "coordinate": {"x": x, "y": y},
-            },
-        }
-        pixels_index["input" + str(index + 1)] = (x, y)
-
-    result = gql_client.execute(query_get_pixel_8x, variable_values=variables)
-
-    for input_name, gql_res in result.items():
-        x, y = pixels_index[input_name]
-        pixel = gql_res["data"][0]["data"]
-
-        update_pixel.apply_async(
-            kwargs=dict(
-                board_id=1,
-                x=x,
-                y=y,
-                pixel_data=pixel,
-            ),
-            priority=5,
-        )
 
 
 @app.task

@@ -1,8 +1,18 @@
 import os
 from enum import Enum as PyEnum
+from enum import unique
 
-from sqlalchemy import (Column, DateTime, Enum, ForeignKey, Index, Integer,
-                        Numeric, String, create_engine)
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    create_engine,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
@@ -30,6 +40,18 @@ class Board(Base):
         return {"id": self.id}
 
     board_id = Column(Integer, primary_key=True)
+
+
+class URL(Base):
+    __tablename__ = "urls"
+
+    def to_dict(self):
+        return {"id": self.id, "url": self.url}
+
+    id = Column(Integer, primary_key=True)
+
+    url = Column(String, unique=True)
+    fetched = Column(DateTime, server_default=func.now())
 
 
 class Pixel(Base):
