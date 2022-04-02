@@ -20,3 +20,4 @@ aiocontextvars
 fastapi
 uvicorn[standard]
 uvloop
+numpy
