@@ -4,6 +4,7 @@ import os
 import sentry_sdk
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 debug = False
@@ -19,7 +20,12 @@ elif "NOLOG" not in os.environ:
 sentry_sdk.init(
     os.environ["SENTRY_DSN"],
     traces_sample_rate=0.01,
-    integrations=[HttpxIntegration(), CeleryIntegration(), SqlalchemyIntegration()],
+    integrations=[
+        HttpxIntegration(),
+        CeleryIntegration(),
+        SqlalchemyIntegration(),
+        RedisIntegration(),
+    ],
     ignore_errors=[KeyboardInterrupt],
     debug=debug,
 )
