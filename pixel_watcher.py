@@ -7,7 +7,7 @@ from gql import Client
 from gql.transport.websockets import WebsocketsTransport
 
 from placedump.common import ctx_aioredis, ctx_redis, get_token, headers
-from placedump.constants import query_get_pixel_8x
+from placedump.constants import query_get_pixel_10x
 from placedump.tasks.pixels import update_pixel
 
 running = True
@@ -31,6 +31,7 @@ async def graphql_parser():
             "Authorization": f"Bearer {token}",
             "Sec-WebSocket-Protocol": "graphql-ws",
             "Origin": "https://hot-potato.reddit.com",
+            "User-Agent": "r/place archiver u/nepeat nepeat#0001",
         },
     )
 
@@ -48,7 +49,7 @@ async def graphql_parser():
             highest_board = max(int(highest_board), 0)
 
             while running:
-                for pair in await redis.spop("queue:pixels", 8):
+                for pair in await redis.spop("queue:pixels", 10):
                     pair = json.loads(pair)
                     pixels_get.append((pair["x"], pair["y"], pair["board"]))
 
@@ -58,7 +59,7 @@ async def graphql_parser():
                     continue
 
                 # pad pixels if less than payload size
-                while len(pixels_get) < 8:
+                while len(pixels_get) < 10:
                     pixels_get.append(
                         (
                             random.randint(0, 999),
@@ -84,7 +85,7 @@ async def graphql_parser():
                     pixels_index["input" + str(index + 1)] = (x, y, board)
 
                 result = await session.execute(
-                    query_get_pixel_8x, variable_values=variables
+                    query_get_pixel_10x, variable_values=variables
                 )
 
                 for input_name, gql_res in result.items():
