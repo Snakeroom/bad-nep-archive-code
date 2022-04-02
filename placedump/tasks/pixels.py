@@ -64,7 +64,7 @@ def get_non_transparent(board, content: bytes):
     Y, X = np.where(np.all(np_img != (0, 0, 0, 0), axis=2))
 
     changed = list(np.column_stack((X, Y)))
-    if len(changed) > 250:
+    if len(changed) > 8192:
         return []
 
     # queue all pixels
@@ -139,6 +139,7 @@ def update_pixel(board_id: int, x: int, y: int, pixel_data: dict):
             )
             .on_conflict_do_nothing(
                 index_elements=[
+                    "board_id",
                     "x",
                     "y",
                     "modified",
