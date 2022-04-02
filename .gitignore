@@ -1,0 +1,6 @@
+__pycache__/
+node_modules/
+.direnv/
+output/
+pixels/
+*egg-info/

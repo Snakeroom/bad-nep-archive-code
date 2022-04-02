@@ -1,0 +1,9 @@
+wheel
+aiohttp
+aioredis
+redis
+hiredis
+b2sdk
+async-timeout
+pillow
+gql[all]
