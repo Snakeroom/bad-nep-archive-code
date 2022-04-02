@@ -7,3 +7,11 @@ b2sdk
 async-timeout
 pillow
 gql[all]
+sqlalchemy[asyncio]
+alembic
+psycopg2
+pottery
+httpx
+celery[redis]
+gevent
+sentry-sdk

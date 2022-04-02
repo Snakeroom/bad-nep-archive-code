@@ -1,6 +1,7 @@
 import os
 import re
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from typing import AsyncGenerator
 
 import aiohttp
@@ -15,8 +16,15 @@ TOKEN_REGEX = re.compile(r'"accessToken":"([^"]+)"')
 headers = {"User-Agent": "r/place archiver u/nepeat nepeat#0001"}
 
 
-def get_redis(decode_responses: bool = True) -> redis.Redis():
-    return redis.from_url(REDIS_URL, decode_responses=decode_responses)
+def get_redis(
+    decode_responses: bool = True,
+    db: int = 0,
+) -> redis.Redis():
+    return redis.from_url(
+        REDIS_URL,
+        decode_responses=decode_responses,
+        db=db,
+    )
 
 
 def get_aioredis(decode_responses: bool = True):
@@ -51,6 +59,7 @@ def get_nb_client() -> Client:
     return Client(transport=transport, fetch_schema_from_transport=True)
 
 
+@lru_cache
 def get_b2_api() -> B2Api:
     info = InMemoryAccountInfo()
     b2_api = B2Api(info)

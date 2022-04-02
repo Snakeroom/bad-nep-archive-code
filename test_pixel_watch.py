@@ -15,6 +15,7 @@ from gql.transport.websockets import WebsocketsTransport
 from PIL import Image
 
 from placedump.common import ctx_aioredis, get_token, headers
+from placedump.tasks.pixels import update_pixel
 
 # logging.basicConfig(level=logging.DEBUG)
 running = True
@@ -205,14 +206,6 @@ async def main():
     await asyncio.gather(*tasks)
 
 
-async def update_pixel(x, y, pixel):
-    user = pixel["userInfo"]["username"]
-
-    with open(f"pixels/{x}_{y}", "a") as f:
-        f.write(f"{user},{pixel['lastModifiedTimestamp']}\n")
-    print(x, y, user, pixel_queue.qsize(), payload_queue.qsize())
-
-
 async def graphql_parser(token: str):
     transport = WebsocketsTransport(
         url="wss://gql-realtime-2.reddit.com/query",
@@ -271,7 +264,15 @@ async def graphql_parser(token: str):
                     x, y = pixels_index[input_name]
                     pixel = gql_res["data"][0]["data"]
 
-                    await update_pixel(x, y, pixel)
+                    update_pixel.apply_async(
+                        kwargs=dict(
+                            board_id=1,
+                            x=x,
+                            y=y,
+                            pixel_data=pixel,
+                        ),
+                        priority=10,
+                    )
             else:
                 # unhappy path: nopack of 8 pixels
                 for payload in pixels_get:
@@ -295,7 +296,15 @@ async def graphql_parser(token: str):
                     )
 
                     pixel = result["act"]["data"][0]["data"]
-                    await update_pixel(x, y, pixel)
+                    update_pixel.apply_async(
+                        kwargs=dict(
+                            board_id=1,
+                            x=x,
+                            y=y,
+                            pixel_data=pixel,
+                        ),
+                        priority=10,
+                    )
 
             pixels_get.clear()
 

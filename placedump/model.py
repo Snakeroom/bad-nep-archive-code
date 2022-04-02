@@ -20,7 +20,7 @@ db_url = os.environ.get("DB_URL", "sqlite:///test.db")
 if "sqlite" in db_url:
     print("WARNING: Local SQLite DB in use, this may be unfavorable.")
 
-engine = create_engine(db_url, future=True)
+engine = create_engine(db_url, future=True, pool_size=10, max_overflow=20)
 sm = sessionmaker(engine)
 
 Base = declarative_base()
@@ -49,11 +49,11 @@ class Pixel(Base):
 
     board_id = Column(Integer)
 
-    x = Column(Integer, nullable=False)
-    y = Column(Integer, nullable=False)
+    x = Column(Integer, nullable=False, primary_key=True)
+    y = Column(Integer, nullable=False, primary_key=True)
+    modified = Column(DateTime, nullable=False, primary_key=True)
 
     user = Column(String, nullable=False)
-    modified = Column(DateTime, nullable=False)
 
 
 Index("pixel_unique_mod", Pixel.x, Pixel.y, Pixel.modified, primary_key=True)
