@@ -1,18 +1,10 @@
 import os
 from enum import Enum as PyEnum
 
-from sqlalchemy import (
-    Column,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Index,
-    Integer,
-    Numeric,
-    String,
-    create_engine,
-)
+from sqlalchemy import (Column, DateTime, Enum, ForeignKey, Index, Integer,
+                        Numeric, String, create_engine)
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from sqlalchemy.sql import func
 
@@ -22,6 +14,11 @@ if "sqlite" in db_url:
 
 engine = create_engine(db_url, future=True, pool_size=10, max_overflow=20)
 sm = sessionmaker(engine)
+
+async_engine = create_async_engine(
+    db_url.replace("postgresql://", "postgresql+asyncpg://"), future=True
+)
+async_sm = sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
 
 Base = declarative_base()
 
@@ -40,14 +37,14 @@ class Pixel(Base):
 
     def to_dict(self):
         return {
-            "board": self.board_id,
+            "canvas": self.board_id,
             "x": self.x,
             "y": self.y,
             "user": self.user,
             "modified": self.modified,
         }
 
-    board_id = Column(Integer)
+    board_id = Column(Integer, primary_key=True)
 
     x = Column(Integer, nullable=False, primary_key=True)
     y = Column(Integer, nullable=False, primary_key=True)
