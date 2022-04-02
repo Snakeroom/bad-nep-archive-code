@@ -1,11 +1,12 @@
 import os
 import re
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from functools import lru_cache
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 import aiohttp
 import aioredis
+import httpx
 import redis
 from b2sdk.v2 import B2Api, InMemoryAccountInfo
 from gql import Client
@@ -19,7 +20,7 @@ headers = {"User-Agent": "r/place archiver u/nepeat nepeat#0001"}
 def get_redis(
     decode_responses: bool = True,
     db: int = 0,
-) -> redis.Redis():
+) -> redis.Redis:
     return redis.from_url(
         REDIS_URL,
         decode_responses=decode_responses,
@@ -40,23 +41,59 @@ async def ctx_aioredis(decode_responses=True) -> AsyncGenerator[aioredis.Redis, 
         await redis.close()
 
 
+@contextmanager
+def ctx_redis(decode_responses=True) -> AsyncGenerator[aioredis.Redis, None]:
+    try:
+        redis = get_redis(decode_responses=decode_responses)
+        yield redis
+    finally:
+        redis.close()
+
+
 async def get_token() -> str:
-    async with aiohttp.ClientSession(headers=headers) as session:
-        place_req = await session.get("https://www.reddit.com/r/place/")
-        content = await place_req.text()
-    matches = TOKEN_REGEX.search(content)
+    async with ctx_aioredis() as redis:
+        token = await redis.get("reddit:token")
+        if not token:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                place_req = await session.get("https://www.reddit.com/r/place/")
+                content = await place_req.text()
+                matches = TOKEN_REGEX.search(content)
+                token = matches.group(1)
 
-    return matches.group(1)
+                await redis.setex("reddit:token", 60, token)
+
+    return token
 
 
-def get_nb_client() -> Client:
+def get_token_sync() -> str:
+    with ctx_redis() as redis:
+        token = redis.get("reddit:token")
+
+        if not token:
+            token_req = httpx.get("https://www.reddit.com/r/place/", headers=headers)
+            content = token_req.text
+            matches = TOKEN_REGEX.search(content)
+            token = matches.group(1)
+            redis.setex("reddit:token", 60, token)
+
+    return token
+
+
+def get_gql_client(token: Optional[str] = None) -> Client:
+    if not token:
+        token = get_token_sync()
+
     # Select your transport with a defined url endpoint
     transport = AIOHTTPTransport(
         url="https://gql-realtime-2.reddit.com/query",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Origin": "https://hot-potato.reddit.com",
+        },
     )
 
     # Create a GraphQL client using the defined transport
-    return Client(transport=transport, fetch_schema_from_transport=True)
+    return Client(transport=transport, fetch_schema_from_transport=False)
 
 
 @lru_cache

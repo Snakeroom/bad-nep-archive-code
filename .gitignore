@@ -4,3 +4,4 @@ node_modules/
 output/
 pixels/
 *egg-info/
+.eggs/*

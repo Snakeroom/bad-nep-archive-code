@@ -10,6 +10,7 @@ import aiohttp
 import aioredis
 
 from placedump.common import ctx_aioredis, get_token, headers
+from placedump.tasks.parse import parse_message
 
 logging.basicConfig(level=logging.INFO)
 
@@ -78,6 +79,7 @@ async def push_to_key(redis: aioredis.Redis, key: str, payload: dict):
         message = message.decode("utf8")
 
     await redis.publish(key, message)
+    parse_message.delay(message)
 
 
 async def connect_socket(session: aiohttp.ClientSession, url: str):

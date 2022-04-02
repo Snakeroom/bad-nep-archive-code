@@ -54,6 +54,3 @@ class Pixel(Base):
     modified = Column(DateTime, nullable=False, primary_key=True)
 
     user = Column(String, nullable=False)
-
-
-Index("pixel_unique_mod", Pixel.x, Pixel.y, Pixel.modified, primary_key=True)

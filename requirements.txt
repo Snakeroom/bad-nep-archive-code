@@ -15,3 +15,5 @@ httpx
 celery[redis]
 gevent
 sentry-sdk
+backoff
+aiocontextvars
