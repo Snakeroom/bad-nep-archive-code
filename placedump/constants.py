@@ -1,8 +1,8 @@
 from gql import gql
 
-query_get_pixel_8x = gql(
+query_get_pixel_10x = gql(
     """
-  mutation pixelHistory($input1: ActInput!, $input2: ActInput!, $input3: ActInput!, $input4: ActInput!, $input5: ActInput!, $input6: ActInput!, $input7: ActInput!, $input8: ActInput!) {
+  mutation pixelHistory($input1: ActInput!, $input2: ActInput!, $input3: ActInput!, $input4: ActInput!, $input5: ActInput!, $input6: ActInput!, $input7: ActInput!, $input8: ActInput!, $input9: ActInput!, $input10: ActInput!) {
     input1: act(input: $input1) {
       data {
         ... on BasicMessage {
@@ -131,6 +131,95 @@ query_get_pixel_8x = gql(
         }
       }
     }
+    input9: act(input: $input9) {
+      data {
+        ... on BasicMessage {
+          id
+          data {
+            ... on GetTileHistoryResponseMessageData {
+              lastModifiedTimestamp
+              userInfo {
+                userID
+                username
+              }
+            }
+          }
+        }
+      }
+    }
+    input10: act(input: $input10) {
+      data {
+        ... on BasicMessage {
+          id
+          data {
+            ... on GetTileHistoryResponseMessageData {
+              lastModifiedTimestamp
+              userInfo {
+                userID
+                username
+              }
+            }
+          }
+        }
+      }
+    }
   }
  """
+)
+
+socket_key = "socket:snakebin"
+
+config_gql = gql(
+    """
+  subscription configuration($input: SubscribeInput!) {
+    subscribe(input: $input) {
+      id
+      ... on BasicMessage {
+        data {
+          __typename
+          ... on ConfigurationMessageData {
+            colorPalette {
+              colors {
+                hex
+                index
+              }
+            }
+            canvasConfigurations {
+              index
+              dx
+              dy
+            }
+            canvasWidth
+            canvasHeight
+          }
+        }
+      }
+    }
+  }
+  """
+)
+
+sub_gql = gql(
+    """
+  subscription replace($input: SubscribeInput!) {
+    subscribe(input: $input) {
+      id
+      ... on BasicMessage {
+        data {
+          __typename
+          ... on FullFrameMessageData {
+            __typename
+            name
+            timestamp
+          }
+          ... on DiffFrameMessageData {
+            __typename
+            name
+            currentTimestamp
+            previousTimestamp
+          }
+        }
+      }
+    }
+  }"""
 )

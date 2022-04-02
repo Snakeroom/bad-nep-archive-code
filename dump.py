@@ -10,6 +10,7 @@ import aiohttp
 import aioredis
 
 from placedump.common import ctx_aioredis, get_token, headers
+from placedump.constants import socket_key
 from placedump.tasks.parse import parse_message
 
 logging.basicConfig(level=logging.INFO)
@@ -158,7 +159,6 @@ async def connect_socket(session: aiohttp.ClientSession, url: str):
                 }
             )
 
-        socket_key = "socket:snakebin"
         async with ctx_aioredis(decode_responses=False) as redis:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
