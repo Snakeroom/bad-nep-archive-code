@@ -1,7 +1,9 @@
+import asyncio
 import logging
 import os
 
 import sentry_sdk
+import uvloop
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
@@ -29,3 +31,5 @@ sentry_sdk.init(
     ignore_errors=[KeyboardInterrupt],
     debug=debug,
 )
+
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())

@@ -17,3 +17,6 @@ gevent
 sentry-sdk
 backoff
 aiocontextvars
+fastapi
+uvicorn[standard]
+uvloop
