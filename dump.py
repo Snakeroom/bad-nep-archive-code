@@ -1,87 +1,16 @@
 import asyncio
-import functools
 import json
 import logging
-import random
-import re
-from concurrent.futures import ThreadPoolExecutor
 
-import aiohttp
 import aioredis
+import backoff
 
-from placedump.common import ctx_aioredis, get_token, headers
-from placedump.constants import socket_key
+from placedump.common import ctx_aioredis, get_async_gql_client, get_token
+from placedump.constants import config_gql, socket_key, sub_gql
 from placedump.tasks.parse import parse_message
 
-logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
-
 tasks = []
-
-pool = ThreadPoolExecutor(max_workers=8)
-
-PAYLOAD_CONFIG = """
-  subscription configuration($input: SubscribeInput!) {
-    subscribe(input: $input) {
-      id
-      ... on BasicMessage {
-        data {
-          __typename
-          ... on ConfigurationMessageData {
-            colorPalette {
-              colors {
-                hex
-                index
-              }
-            }
-            canvasConfigurations {
-              index
-              dx
-              dy
-            }
-            canvasWidth
-            canvasHeight
-          }
-        }
-      }
-    }
-  }
-"""
-
-PAYLOAD_REPLACE = """
-  subscription replace($input: SubscribeInput!) {
-    subscribe(input: $input) {
-      id
-      ... on BasicMessage {
-        data {
-          __typename
-          ... on FullFrameMessageData {
-            __typename
-            name
-            timestamp
-          }
-          ... on DiffFrameMessageData {
-            __typename
-            name
-            currentTimestamp
-            previousTimestamp
-          }
-        }
-      }
-    }
-  }
-"""
-
-
-async def push_to_key(redis: aioredis.Redis, key: str, payload: dict):
-    await redis.xadd(key, payload, maxlen=2000000)
-
-    message = payload["message"]
-    if isinstance(message, bytes):
-        message = message.decode("utf8")
-
-    await redis.publish(key, message)
-    parse_message.delay(message)
 
 
 async def get_meta() -> dict:
@@ -90,110 +19,72 @@ async def get_meta() -> dict:
         return result or {}
 
 
-async def connect_socket(session: aiohttp.ClientSession, url: str):
-    token = await get_token()
-    meta = await get_meta()
+async def push_to_key(redis: aioredis.Redis, key: str, payload: dict, canvas_id: int):
+    await redis.xadd(key, payload, maxlen=2000000)
 
-    log.info("socket connecting")
-    log.info(meta)
-
-    async with session.ws_connect(
-        url,
-        headers={
-            "Sec-WebSocket-Protocol": "graphql-ws",
-            "Origin": "https://hot-potato.reddit.com",
-        },
-    ) as ws:
-        log.info("socket connected")
-        await ws.send_str(
-            json.dumps(
-                {
-                    "type": "connection_init",
-                    "payload": {"Authorization": f"Bearer {token}"},
-                }
-            )
-        )
-
-        await ws.send_json(
-            {
-                "id": "1",
-                "payload": {
-                    "extensions": {},
-                    "operationName": "configuration",
-                    "query": PAYLOAD_CONFIG,
-                    "variables": {
-                        "input": {
-                            "channel": {
-                                "category": "CONFIG",
-                                "teamOwner": "AFD2022",
-                            }
-                        }
-                    },
-                },
-                "type": "start",
-            }
-        )
-
-        highest_board = int(meta.get("index", "0"))
-
-        for x in range(0, highest_board + 1):
-            log.info("launching for board %d, ws id %d", x, 2 + x)
-            await ws.send_json(
-                {
-                    "id": str(2 + highest_board),
-                    "payload": {
-                        "extensions": {},
-                        "operationName": "replace",
-                        "query": PAYLOAD_REPLACE,
-                        "variables": {
-                            "input": {
-                                "channel": {
-                                    "category": "CANVAS",
-                                    "tag": str(x),
-                                    "teamOwner": "AFD2022",
-                                }
-                            }
-                        },
-                    },
-                    "type": "start",
-                }
-            )
-
-        async with ctx_aioredis(decode_responses=False) as redis:
-            async for msg in ws:
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    await push_to_key(
-                        redis,
-                        socket_key,
-                        {
-                            "message": msg.data.encode("utf8"),
-                            "type": "text",
-                        },
-                    )
-                elif msg.type == aiohttp.WSMsgType.BINARY:
-                    await push_to_key(
-                        redis,
-                        socket_key,
-                        {
-                            "message": msg.data,
-                            "type": "binary",
-                        },
-                    )
-                elif msg.type == aiohttp.WSMsgType.ERROR:
-                    break
+    message = payload["message"]
+    await redis.publish(key, message)
+    parse_message.delay(message, canvas_id)
 
 
 async def main():
-    async with aiohttp.ClientSession(headers=headers) as session:
-        while True:
-            try:
-                await connect_socket(session, "wss://gql-realtime-2.reddit.com/query")
-                print("Socket disconnected!")
-            except aiohttp.client_exceptions.WSServerHandshakeError as e:
-                print(e.request_info)
-                print("Handshake error!", e)
+    meta = await get_meta()
+    highest_board = int(meta.get("index", "0"))
+    log.info(meta)
 
-            await asyncio.sleep(1)
+    tasks.append(asyncio.create_task(graphql_parser("config")))
+
+    for x in range(0, highest_board + 1):
+        tasks.append(asyncio.create_task(graphql_parser(x)))
+
+    await asyncio.gather(*tasks)
+
+
+@backoff.on_exception(backoff.fibo, Exception, max_time=30)
+async def graphql_parser(canvas_id):
+    # pick the corrent gql schema and pick variables for canvas / config grabs.
+    if canvas_id == "config":
+        schema = config_gql
+        variables = {
+            "input": {
+                "channel": {
+                    "category": "CONFIG",
+                    "teamOwner": "AFD2022",
+                }
+            }
+        }
+    else:
+        schema = sub_gql
+        variables = {
+            "input": {
+                "channel": {
+                    "category": "CANVAS",
+                    "teamOwner": "AFD2022",
+                    "tag": str(canvas_id),
+                }
+            }
+        }
+
+    # Using `async with` on the client will start a connection on the transport
+    # and provide a `session` variable to execute queries on this connection
+    log.info("socket connecting for canvas %s", canvas_id)
+
+    async with ctx_aioredis() as redis:
+        async with get_async_gql_client() as session:
+            log.info("socket connected for canvas %s", canvas_id)
+            async for result in session.subscribe(schema, variable_values=variables):
+                # append canvas id to messages
+                result["canvas_id"] = canvas_id
+
+                await push_to_key(
+                    redis,
+                    socket_key,
+                    {
+                        "message": json.dumps(result),
+                        "type": "text",
+                    },
+                    canvas_id=canvas_id,
+                )
 
 
 if __name__ == "__main__":
