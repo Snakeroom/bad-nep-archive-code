@@ -1,15 +1,19 @@
 import asyncio
+import functools
 import json
-import random
+import logging
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
 import backoff
-from gql import Client
-from gql.transport.websockets import WebsocketsTransport
+from gql import gql
+from gql.dsl import DSLQuery, DSLSchema, dsl_gql
 
-from placedump.common import ctx_aioredis, ctx_redis, get_token, headers
-from placedump.constants import query_get_pixel_10x
+from placedump.common import ctx_aioredis, get_async_gql_client, get_token, headers
 from placedump.tasks.pixels import update_pixel
 
+log = logging.getLogger("info")
+pool = ThreadPoolExecutor(max_workers=8)
 running = True
 tasks = []
 
@@ -21,88 +25,125 @@ async def main():
     await asyncio.gather(*tasks)
 
 
-@backoff.on_exception(backoff.constant, Exception, interval=1, max_time=300)
+@lru_cache
+def generate_history_mutation(count: int):
+    input_header = ""
+    inputs = ""
+
+    for input_index in range(0, count):
+        index_str = str(input_index + 1)
+
+        input_header += f"$input{index_str}: ActInput!, "
+        inputs += """
+    input%s: act(input: $input%s) {
+      data {
+        ... on BasicMessage {
+          id
+          data {
+            ... on GetTileHistoryResponseMessageData {
+              lastModifiedTimestamp
+              userInfo {
+                userID
+                username
+              }
+            }
+          }
+        }
+      }
+    }""" % (
+            index_str,
+            index_str,
+        )
+
+    input_header = input_header.rstrip(", ")
+
+    return gql(
+        """mutation pixelHistory({input_header}) {{
+        {inputs}
+  }}""".format(
+            input_header=input_header,
+            inputs=inputs,
+        )
+    )
+
+
+async def bulk_update(pixels: dict, gql_results: dict):
+    updates = []
+
+    for input_name, gql_res in gql_results.items():
+        pixel_info = pixels[input_name]
+        pixel_data = gql_res["data"][0]["data"]
+
+        updates.append(
+            asyncio.get_event_loop().run_in_executor(
+                pool,
+                functools.partial(
+                    update_pixel.apply_async,
+                    kwargs=dict(
+                        board_id=pixel_info["board"],
+                        x=pixel_info["x"],
+                        y=pixel_info["y"],
+                        pixel_data=pixel_data,
+                    ),
+                    priority=5,
+                ),
+            )
+        )
+
+    await asyncio.gather(*updates)
+
+
+@backoff.on_exception(backoff.fibo, Exception, max_time=30)
 async def graphql_parser():
     token = await get_token()
-
-    transport = WebsocketsTransport(
-        url="wss://gql-realtime-2.reddit.com/query",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Sec-WebSocket-Protocol": "graphql-ws",
-            "Origin": "https://hot-potato.reddit.com",
-            "User-Agent": "r/place archiver u/nepeat nepeat#0001",
-        },
-    )
 
     # Using `async with` on the client will start a connection on the transport
     # and provide a `session` variable to execute queries on this connection
     async with ctx_aioredis() as redis:
-        async with Client(
-            transport=transport,
-            fetch_schema_from_transport=True,
-        ) as session:
-            print("socket connected")
-            pixels_get = []
+        async with get_async_gql_client() as session:
+            log.info("socket connected")
+            pixels_index = {}
 
             highest_board = await redis.hget("place:meta", "index")
             highest_board = max(int(highest_board), 0)
 
             while running:
-                for pair in await redis.spop("queue:pixels", 10):
-                    pair = json.loads(pair)
-                    pixels_get.append((pair["x"], pair["y"], pair["board"]))
+                variables = {}
+
+                pairs_raw = await redis.spop("queue:pixels", 24)
+                for index, pixel in enumerate(pairs_raw):
+                    pixels_index["input" + str(index + 1)] = json.loads(pixel)
 
                 # sleep if we have no pixels
-                if len(pixels_get) == 0:
+                if len(pixels_index) == 0:
                     await asyncio.sleep(0.1)
                     continue
 
-                # pad pixels if less than payload size
-                while len(pixels_get) < 10:
-                    pixels_get.append(
-                        (
-                            random.randint(0, 999),
-                            random.randint(0, 999),
-                            random.randint(0, highest_board + 1),
-                        )
-                    )
-
-                variables = {}
-                pixels_index = {}
-
-                for index, pixel in enumerate(pixels_get):
-                    x, y, board = pixel
-
-                    variables["input" + str(index + 1)] = {
+                for key, pixel in pixels_index.items():
+                    variables[key] = {
                         "actionName": "r/replace:get_tile_history",
                         "PixelMessageData": {
-                            "canvasIndex": board,
+                            "canvasIndex": pixel["board"],
                             "colorIndex": 0,
-                            "coordinate": {"x": x, "y": y},
+                            "coordinate": {"x": pixel["x"], "y": pixel["y"]},
                         },
                     }
-                    pixels_index["input" + str(index + 1)] = (x, y, board)
+
+                gql_query = generate_history_mutation(len(pixels_index))
 
                 result = await session.execute(
-                    query_get_pixel_10x, variable_values=variables
+                    gql_query,
+                    variable_values=variables,
                 )
 
-                for input_name, gql_res in result.items():
-                    x, y, board = pixels_index[input_name]
-                    pixel = gql_res["data"][0]["data"]
+                await bulk_update(pixels_index, result)
+                log.info(
+                    "batch completed, batch: %s remaining: %s",
+                    len(pixels_index),
+                    await redis.scard("queue:pixels"),
+                )
 
-                    update_pixel.apply_async(
-                        kwargs=dict(
-                            board_id=board,
-                            x=x,
-                            y=y,
-                            pixel_data=pixel,
-                        ),
-                        priority=5,
-                    )
-                print("batch completed, remaining: ", await redis.scard("queue:pixels"))
-                pixels_get.clear()
+                pixels_index.clear()
 
 
 if __name__ == "__main__":

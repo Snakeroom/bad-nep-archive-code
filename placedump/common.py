@@ -11,6 +11,7 @@ import redis
 from b2sdk.v2 import B2Api, InMemoryAccountInfo
 from gql import Client
 from gql.transport.aiohttp import AIOHTTPTransport
+from gql.transport.websockets import WebsocketsTransport
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost")
 TOKEN_REGEX = re.compile(r'"accessToken":"([^"]+)"')
@@ -94,6 +95,28 @@ def get_gql_client(token: Optional[str] = None) -> Client:
 
     # Create a GraphQL client using the defined transport
     return Client(transport=transport, fetch_schema_from_transport=False)
+
+
+@asynccontextmanager
+async def get_async_gql_client() -> Client:
+    token = await get_token()
+
+    transport = WebsocketsTransport(
+        url="wss://gql-realtime-2.reddit.com/query",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Sec-WebSocket-Protocol": "graphql-ws",
+            "Origin": "https://hot-potato.reddit.com",
+            "User-Agent": "r/place archiver u/nepeat nepeat#0001",
+        },
+        ping_interval=2.0,
+    )
+
+    async with Client(
+        transport=transport,
+        fetch_schema_from_transport=True,
+    ) as session:
+        yield session
 
 
 @lru_cache

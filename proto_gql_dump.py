@@ -4,11 +4,8 @@ import logging
 
 import aioredis
 import backoff
-from gql import Client, gql
-from gql.transport.websockets import WebsocketsTransport
-from httpx import head
 
-from placedump.common import ctx_aioredis, get_token
+from placedump.common import ctx_aioredis, get_async_gql_client, get_token
 from placedump.constants import config_gql, socket_key, sub_gql
 from placedump.tasks.parse import parse_message
 
@@ -43,21 +40,8 @@ async def main():
     await asyncio.gather(*tasks)
 
 
-@backoff.on_exception(backoff.constant, Exception, interval=1, max_time=300)
+@backoff.on_exception(backoff.fibo, Exception, max_time=30)
 async def graphql_parser(canvas_id):
-    token = await get_token()
-
-    transport = WebsocketsTransport(
-        url="wss://gql-realtime-2.reddit.com/query",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Sec-WebSocket-Protocol": "graphql-ws",
-            "Origin": "https://hot-potato.reddit.com",
-            "User-Agent": "r/place archiver u/nepeat nepeat#0001",
-        },
-        ping_interval=2.0,
-    )
-
     # pick the corrent gql schema and pick variables for canvas / config grabs.
     if canvas_id == "config":
         schema = config_gql
@@ -86,10 +70,7 @@ async def graphql_parser(canvas_id):
     log.info("socket connecting for canvas %s", canvas_id)
 
     async with ctx_aioredis() as redis:
-        async with Client(
-            transport=transport,
-            fetch_schema_from_transport=True,
-        ) as session:
+        async with get_async_gql_client() as session:
             log.info("socket connected for canvas %s", canvas_id)
             async for result in session.subscribe(schema, variable_values=variables):
                 # append canvas id to messages
