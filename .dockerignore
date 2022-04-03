@@ -1,0 +1,10 @@
+.env
+.envrc
+.pytest_cache/
+env/
+.direnv/
+__pycache__/
+*.pyc
+celerybeat-schedule
+.eggs/
+*.egg-info/
