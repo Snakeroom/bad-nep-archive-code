@@ -7,6 +7,7 @@ from io import BytesIO
 
 import httpx
 import numpy as np
+import sentry_sdk
 from async_timeout import timeout
 from b2sdk.exception import TooManyRequests
 from gql import gql
@@ -123,6 +124,7 @@ def download_url(board: int, url: str):
                     insert(URL)
                     .values(
                         url=url,
+                        size=len(data),
                     )
                     .on_conflict_do_nothing(index_elements=["url"])
                 )

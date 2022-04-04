@@ -52,6 +52,7 @@ class URL(Base):
 
     url = Column(String, unique=True)
     fetched = Column(DateTime, server_default=func.now())
+    size = Column(Integer)
 
 
 class Pixel(Base):
