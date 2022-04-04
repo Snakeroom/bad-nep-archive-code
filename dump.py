@@ -11,6 +11,7 @@ from placedump.tasks.parse import parse_message
 
 log = logging.getLogger(__name__)
 tasks = []
+parsers = {}
 
 
 async def get_meta() -> dict:
@@ -28,16 +29,28 @@ async def push_to_key(redis: aioredis.Redis, key: str, payload: dict, canvas_id:
 
 
 async def main():
-    meta = await get_meta()
-    highest_board = int(meta.get("index", "0"))
-    log.info(meta)
-
     tasks.append(asyncio.create_task(graphql_parser("config")))
-
-    for x in range(0, highest_board + 1):
-        tasks.append(asyncio.create_task(graphql_parser(x)))
+    tasks.append(asyncio.create_task(parser_launcher()))
 
     await asyncio.gather(*tasks)
+
+
+async def parser_launcher():
+    while True:
+        meta = await get_meta()
+        highest_board = int(meta.get("index", "0"))
+
+        if len(parsers) < highest_board + 1:
+            log.info("meta canvas count update, new meta is")
+            log.info(meta)
+
+            for x in range(0, highest_board + 1):
+                if x not in parsers:
+                    task = asyncio.create_task(graphql_parser(x))
+                    parsers[x] = task
+                    tasks.append(task)
+
+        await asyncio.sleep(1)
 
 
 @backoff.on_exception(backoff.fibo, Exception, max_time=30)
