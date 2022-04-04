@@ -1,0 +1,39 @@
+version: "3.7"
+services:
+  pixel_watcher:
+    image: registry.generalprogramming.org/placedump:latest
+    build: .
+    env_file: .env
+    networks:
+      - internal
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki.service.fmt2.consul:3100/loki/api/v1/push"
+    restart: always
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+    command: "python pixel_watcher.py"
+  celery:
+    image: registry.generalprogramming.org/placedump:latest
+    build: .
+    env_file: .env
+    networks:
+      - internal
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://loki.service.fmt2.consul:3100/loki/api/v1/push"
+    restart: always
+    deploy:
+      restart_policy:
+        condition: on-failure
+      replicas: 4
+    command: "celery -A placedump.tasks worker -l INFO --autoscale 24,2"
+networks:
+  publicweb:
+    driver: overlay
+    external: true
+  internal:
