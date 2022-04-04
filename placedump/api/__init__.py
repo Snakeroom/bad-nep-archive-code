@@ -61,10 +61,9 @@ async def get_pixel_history(
     This call accepts positions with X, Y coordinates in specific canvases.
 
     This call accepts authors to pull pixels changed by that author.
-    """
 
-    if all(x is None for x in [x, y, canvas_id, author]):
-        raise HTTPException(status_code=400, detail="Missing parameters.")
+    This call accepts no arguments to pull pixels for the entire dataset.
+    """
 
     # GOOD ENOUGH HACK
     if canvas_id is None:
@@ -85,28 +84,29 @@ async def get_pixel_history(
         # Query all with limit.
         filter_query = select(Pixel).order_by(Pixel.modified).limit(limit)
 
-        if after:
+        if after is not None:
             timestamp = float(after) / 1000.0
             timestamp = datetime.datetime.fromtimestamp(timestamp)
+            count_query = count_query.filter(Pixel.modified >= timestamp)
             filter_query = filter_query.filter(Pixel.modified >= timestamp)
 
         # Canvas
-        if canvas_id:
+        if canvas_id is not None:
             count_query = count_query.filter(Pixel.board_id == canvas_id)
             filter_query = filter_query.filter(Pixel.board_id == canvas_id)
 
         # X filters
-        if x:
+        if x is not None:
             count_query = count_query.filter(Pixel.x == x)
             filter_query = filter_query.filter(Pixel.x == x)
 
         # Y filters
-        if y:
+        if y is not None:
             count_query = count_query.filter(Pixel.y == y)
             filter_query = filter_query.filter(Pixel.y == y)
 
         # Filter: Author
-        if author:
+        if author is not None:
             count_query = count_query.filter(Pixel.user == author)
             filter_query = filter_query.filter(Pixel.user == author)
 
