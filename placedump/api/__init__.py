@@ -51,7 +51,7 @@ async def get_pixel_history(
     y: Optional[int] = Query(None, ge=0),
     canvas_id: Optional[int] = Query(None, ge=-1),
     author: Optional[str] = None,
-    limit: Optional[int] = Query(100, ge=0),
+    limit: Optional[int] = Query(100, ge=0, le=1000),
     after: Optional[int] = None,
 ):
     """Get the history of pixels in a location or by author.
