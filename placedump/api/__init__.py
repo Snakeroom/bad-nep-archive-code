@@ -56,6 +56,8 @@ async def get_pixel_history(
 ):
     """Get the history of pixels in a location or by author.
 
+    canvas_id can be set to -1 to get results for all canvases.
+
     This call accepts positions with X, Y coordinates, without a canvas.
 
     This call accepts positions with X, Y coordinates in specific canvases.
@@ -91,7 +93,7 @@ async def get_pixel_history(
             filter_query = filter_query.filter(Pixel.modified >= timestamp)
 
         # Canvas
-        if canvas_id is not None:
+        if canvas_id is not None and canvas_id != -1:
             count_query = count_query.filter(Pixel.board_id == canvas_id)
             filter_query = filter_query.filter(Pixel.board_id == canvas_id)
 
