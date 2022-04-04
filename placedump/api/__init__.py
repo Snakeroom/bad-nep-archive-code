@@ -1,7 +1,7 @@
 import datetime
-from typing import List
+from typing import List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from placedump.model import Pixel, async_sm
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -11,6 +11,7 @@ app = FastAPI()
 
 class PixelResult(BaseModel):
     canvas: int
+    user: str
     x: int
     y: int
     modified: datetime.datetime
@@ -22,7 +23,7 @@ class CountableBase(BaseModel):
 
 
 class PixelList(CountableBase):
-    pixels: List[PixelResult]
+    history: List[PixelResult]
 
 
 class PixelInfo(CountableBase):
@@ -34,8 +35,8 @@ async def root():
     return {"message": "Hello World"}
 
 
-@app.get("/pixels", response_model=PixelInfo)
-async def pixels():
+@app.get("/info", response_model=PixelInfo)
+async def info():
     async with async_sm() as db:
         count_query = select(func.count()).select_from(Pixel)
         pixel_count = await db.execute(count_query)
@@ -44,61 +45,80 @@ async def pixels():
     return {"count": pixel_count, "generated": datetime.datetime.utcnow()}
 
 
-@app.get("/pixels/author/<author: str>", response_model=PixelList)
-async def get_pixel_history_by_author(author: str):
-    async with async_sm() as db:
-        # Count all.
-        count_query = (
-            select(func.count())
-            .select_from(Pixel)
-            .filter(func.lower(Pixel.user) == author.lower())
-        )
+@app.get("/pixel", response_model=PixelList)
+async def get_pixel_history(
+    x: Optional[int] = Query(None, ge=0),
+    y: Optional[int] = Query(None, ge=0),
+    canvas_id: Optional[int] = Query(None, ge=-1),
+    author: Optional[str] = None,
+    limit: Optional[int] = Query(100, ge=0),
+    after: Optional[int] = None,
+):
+    """Get the history of pixels in a location or by author.
 
+    This call accepts positions with X, Y coordinates, without a canvas.
+
+    This call accepts positions with X, Y coordinates in specific canvases.
+
+    This call accepts authors to pull pixels changed by that author.
+    """
+
+    if all(x is None for x in [x, y, canvas_id, author]):
+        raise HTTPException(status_code=400, detail="Missing parameters.")
+
+    # GOOD ENOUGH HACK
+    if canvas_id is None:
+        canvas_id = 0
+
+        if x and x > 999:
+            canvas_id += 1
+            x -= 999
+
+        if y and y > 999:
+            canvas_id += 2
+            y -= 999
+
+    async with async_sm() as db:
+        # Create count query, no limits.
+        count_query = select(func.count()).select_from(Pixel)
+
+        # Query all with limit.
+        filter_query = select(Pixel).order_by(Pixel.modified).limit(limit)
+
+        if after:
+            timestamp = float(after) / 1000.0
+            timestamp = datetime.datetime.fromtimestamp(timestamp)
+            filter_query = filter_query.filter(Pixel.modified >= timestamp)
+
+        # Canvas
+        if canvas_id:
+            count_query = count_query.filter(Pixel.board_id == canvas_id)
+            filter_query = filter_query.filter(Pixel.board_id == canvas_id)
+
+        # X filters
+        if x:
+            count_query = count_query.filter(Pixel.x == x)
+            filter_query = filter_query.filter(Pixel.x == x)
+
+        # Y filters
+        if y:
+            count_query = count_query.filter(Pixel.y == y)
+            filter_query = filter_query.filter(Pixel.y == y)
+
+        # Filter: Author
+        if author:
+            count_query = count_query.filter(Pixel.user == author)
+            filter_query = filter_query.filter(Pixel.user == author)
+
+        # Execute queries.
         pixel_count = await db.execute(count_query)
         pixel_count = pixel_count.scalar_one()
 
-        # Query all.
-        filter_query = select(Pixel).filter(func.lower(Pixel.user) == author.lower())
         filtered_pixels = (await db.execute(filter_query)).scalars()
-
         pixels = [x.to_dict() for x in filtered_pixels]
 
     return {
         "count": pixel_count,
         "generated": datetime.datetime.utcnow(),
-        "pixels": pixels,
-    }
-
-
-@app.get("/pixels/canvas/<canvas: int>/<x: int>/<y: int>")
-async def get_pixel_history_by_cords(canvas: int, x: int, y: int):
-    """Get the history of a specific pixel.
-    Using a value of -1 for canvas will get it for all canvases."""
-    async with async_sm() as db:
-        count_query = (
-            select(func.count())
-            .select_from(Pixel)
-            .filter(Pixel.x == x)
-            .filter(Pixel.y == y)
-        )
-
-        if canvas != -1:
-            count_query = count_query.filter(Pixel.board_id == canvas)
-
-        pixel_count = await db.execute(count_query)
-        pixel_count = pixel_count.scalar_one()
-
-        # Query all.
-        filter_query = select(Pixel).filter(Pixel.x == x).filter(Pixel.y == y)
-
-        if canvas != -1:
-            filter_query = filter_query.filter(Pixel.board_id == canvas)
-        filtered_pixels = (await db.execute(filter_query)).scalars()
-
-        pixels = [x.to_dict() for x in filtered_pixels]
-
-    return {
-        "count": pixel_count,
-        "generated": datetime.datetime.utcnow(),
-        "pixels": pixels,
+        "history": pixels,
     }
