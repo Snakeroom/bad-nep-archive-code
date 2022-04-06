@@ -1,0 +1,25 @@
+version: "3.7"
+services:
+  api:
+    image: registry.generalprogramming.org/placedump:latest
+    build: .
+    env_file: .env
+    networks:
+      - publicweb
+    restart: always
+    deploy:
+      labels:
+        - traefik.enable=true
+        - traefik.port=8000
+        - traefik.docker.network=publicweb
+        # Routes
+        - traefik.frontend.rule=Host:place.owo.me
+        - traefik.http.routers.placeapi.rule=Host(`place.owo.me`)
+        - traefik.http.services.placeapi.loadbalancer.server.port=8000
+      restart_policy:
+        condition: on-failure
+    command: "uvicorn --host 0.0.0.0 placedump.api:app"
+networks:
+  publicweb:
+    driver: overlay
+    external: true
