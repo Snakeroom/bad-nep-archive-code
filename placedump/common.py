@@ -2,7 +2,7 @@ import os
 import re
 from contextlib import asynccontextmanager, contextmanager
 from functools import lru_cache
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Generator, Optional
 
 import aiohttp
 import aioredis
@@ -43,7 +43,7 @@ async def ctx_aioredis(decode_responses=True) -> AsyncGenerator[aioredis.Redis, 
 
 
 @contextmanager
-def ctx_redis(decode_responses=True) -> AsyncGenerator[aioredis.Redis, None]:
+def ctx_redis(decode_responses=True) -> Generator[redis.Redis, None, None]:
     try:
         redis = get_redis(decode_responses=decode_responses)
         yield redis
