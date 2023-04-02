@@ -1,0 +1,39 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+aiohttp = "*"
+aioredis = "*"
+redis = "*"
+hiredis = "*"
+b2sdk = "*"
+async-timeout = "*"
+pillow = "*"
+gql = {extras = ["all"], version = "*"}
+sqlalchemy = {extras = ["asyncio"], version = "*"}
+alembic = "*"
+psycopg2 = "*"
+pottery = "*"
+httpx = "*"
+celery = {extras = ["redis"], version = "*"}
+gevent = "*"
+sentry-sdk = "*"
+backoff = "*"
+aiocontextvars = "*"
+fastapi = "*"
+uvicorn = {extras = ["standard"], version = "*"}
+uvloop = "*"
+numpy = "*"
+asyncpg = "*"
+scylla-driver = "*"
+
+[dev-packages]
+black = "*"
+pycodestyle = "*"
+flake8 = "*"
+pydocstyle = "*"
+
+[requires]
+python_version = "3.11"

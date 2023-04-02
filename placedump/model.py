@@ -1,7 +1,10 @@
 import os
+from contextlib import contextmanager
 from enum import Enum as PyEnum
 from enum import unique
+from typing import Generator
 
+from cassandra.cluster import Cluster, Session
 from sqlalchemy import (
     Column,
     DateTime,
@@ -22,24 +25,33 @@ db_url = os.environ.get("DB_URL", "sqlite:///test.db")
 if "sqlite" in db_url:
     print("WARNING: Local SQLite DB in use, this may be unfavorable.")
 
+# Cassandra
+cass_cluster = Cluster(os.environ["CASSANDRA_HOSTS"].split(","))
+
+
+@contextmanager
+def ctx_cass() -> Generator[Session, None, None]:
+    session = None
+
+    try:
+        session = cass_cluster.connect()
+        yield session
+    finally:
+        if session:
+            session.shutdown()
+
+
+# SQL
 engine = create_engine(db_url, future=True, pool_size=10, max_overflow=20)
 sm = sessionmaker(engine)
 
 async_engine = create_async_engine(
-    db_url.replace("postgresql://", "postgresql+asyncpg://"), future=True
+    db_url.replace("postgresql://", "postgresql+asyncpg://"),
+    future=True,
 )
 async_sm = sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
 
 Base = declarative_base()
-
-
-class Board(Base):
-    __tablename__ = "boards"
-
-    def to_dict(self):
-        return {"id": self.id}
-
-    board_id = Column(Integer, primary_key=True)
 
 
 class URL(Base):
