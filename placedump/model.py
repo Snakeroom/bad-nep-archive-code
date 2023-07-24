@@ -41,6 +41,8 @@ def ctx_cass() -> Generator[Session, None, None]:
 
 
 class CPixel(Model):
+    __keyspace__ = "placeapp"
+
     board_id = columns.Integer(primary_key=True)
     x = columns.Integer(partition_key=True)
     y = columns.Integer(partition_key=True)
