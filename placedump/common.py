@@ -137,8 +137,11 @@ def get_b2_api() -> B2Api:
     return b2_api
 
 
-def handle_exception(details):
+def handle_backoff(details, logger, log_level):
     exception = details.pop("exception")
     if exception:
-        traceback.print_exception(exception)
         sentry_sdk.capture_exception(exception)
+        traceback.print_exception(exception)
+    else:
+        msg = "%s(...) backing offf (%s)"
+        sentry_sdk.capture_message(msg, log_level)
