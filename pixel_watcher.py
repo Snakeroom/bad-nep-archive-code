@@ -9,12 +9,7 @@ import backoff
 from gql import gql
 from gql.dsl import DSLQuery, DSLSchema, dsl_gql
 
-from placedump.common import (
-    ctx_aioredis,
-    get_async_gql_client,
-    handle_exception,
-    headers,
-)
+from placedump.common import ctx_aioredis, get_async_gql_client, handle_backoff, headers
 from placedump.tasks.pixels import update_pixel
 
 log = logging.getLogger("info")
@@ -73,31 +68,32 @@ def generate_history_mutation(count: int):
 
 
 async def bulk_update(pixels: dict, gql_results: dict):
-    to_push = []
+    updates = []
 
     for input_name, gql_res in gql_results.items():
         pixel_info = pixels[input_name]
         pixel_data = gql_res["data"][0]["data"]
-        to_push.append(
-            dict(
-                board=pixel_info["board"],
-                x=pixel_info["x"],
-                y=pixel_info["y"],
-                data=pixel_data,
+
+        updates.append(
+            asyncio.get_event_loop().run_in_executor(
+                pool,
+                functools.partial(
+                    update_pixel.apply_async,
+                    kwargs=dict(
+                        board_id=pixel_info["board"],
+                        x=pixel_info["x"],
+                        y=pixel_info["y"],
+                        pixel_data=pixel_data,
+                    ),
+                    priority=5,
+                ),
             )
         )
 
-        await asyncio.get_event_loop().run_in_executor(
-            pool,
-            functools.partial(
-                update_pixels.apply_async,
-                args=(to_push,),
-                priority=5,
-            ),
-        )
+    await asyncio.gather(*updates)
 
 
-@backoff.on_exception(backoff.fibo, Exception, max_time=30, on_backoff=handle_exception)
+@backoff.on_exception(backoff.fibo, Exception, max_time=30, on_backoff=handle_backoff)
 async def graphql_parser():
     # Using `async with` on the client will start a connection on the transport
     # and provide a `session` variable to execute queries on this connection
