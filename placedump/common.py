@@ -8,6 +8,7 @@ from typing import AsyncGenerator, Generator, Optional
 import aiohttp
 import httpx
 import redis
+import sentry_sdk
 from b2sdk.v2 import B2Api, InMemoryAccountInfo
 from gql import Client
 from gql.transport.aiohttp import AIOHTTPTransport
@@ -136,5 +137,8 @@ def get_b2_api() -> B2Api:
     return b2_api
 
 
-def handle_exception(*args, **kwargs):
-    traceback.print_exception(kwargs["exception"])
+def handle_exception(details):
+    exception = details.pop("exception")
+    if exception:
+        traceback.print_exception(exception)
+        sentry_sdk.capture_exception(exception)
