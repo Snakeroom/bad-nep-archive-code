@@ -155,22 +155,23 @@ def update_pixel(board_id: int, x: int, y: int, pixel_data: dict):
 
 @app.task()
 def update_pixels(pixels):
-    with BatchQuery(batch_type=BatchType.Unlogged) as b:
-        for pixel in pixels:
-            try:
-                user = pixel["data"]["userInfo"]["username"]
-                timestamp = float(pixel["data"]["lastModifiedTimestamp"]) / 1000.0
-            except (TypeError, KeyError):
-                continue
+    with ctx_cass() as db:
+        with BatchQuery(batch_type=BatchType.Unlogged, connection=db) as b:
+            for pixel in pixels:
+                try:
+                    user = pixel["data"]["userInfo"]["username"]
+                    timestamp = float(pixel["data"]["lastModifiedTimestamp"]) / 1000.0
+                except (TypeError, KeyError):
+                    continue
 
-            timestamp = datetime.datetime.fromtimestamp(timestamp)
-            CPixel.batch(b).if_not_exists().create(
-                board_id=pixel["board"],
-                x=pixel["x"],
-                y=pixel["y"],
-                user=user,
-                modified=timestamp,
-            )
+                timestamp = datetime.datetime.fromtimestamp(timestamp)
+                CPixel.batch(b).if_not_exists().create(
+                    board_id=pixel["board"],
+                    x=pixel["x"],
+                    y=pixel["y"],
+                    user=user,
+                    modified=timestamp,
+                )
 
 
 @app.task
