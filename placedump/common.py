@@ -1,5 +1,6 @@
 import os
 import re
+import traceback
 from contextlib import asynccontextmanager, contextmanager
 from functools import lru_cache
 from typing import AsyncGenerator, Generator, Optional
@@ -56,9 +57,14 @@ async def get_token() -> str:
         token = await redis.get("reddit:token")
         if not token:
             async with aiohttp.ClientSession(headers=headers) as session:
-                place_req = await session.get("https://www.reddit.com/r/place/")
+                place_req = await session.get(
+                    "https://www.reddit.com/r/place/?rdt=33146",
+                )
                 content = await place_req.text()
                 matches = TOKEN_REGEX.search(content)
+                if not matches:
+                    print(token)
+                    raise Exception("unable to get access token")
                 token = matches.group(1)
 
                 await redis.setex("reddit:token", 60, token)
@@ -128,3 +134,7 @@ def get_b2_api() -> B2Api:
     b2_api.authorize_account("production", application_key_id, application_key)
 
     return b2_api
+
+
+def handle_exception(*args, **kwargs):
+    traceback.print_exception(kwargs["exception"])

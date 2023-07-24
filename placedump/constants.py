@@ -182,18 +182,42 @@ config_gql = gql(
               colors {
                 hex
                 index
+                __typename
               }
+              __typename
             }
             canvasConfigurations {
               index
               dx
               dy
+              __typename
+            }
+            activeZone {
+              topLeft {
+                x
+                y
+                __typename
+              }
+              bottomRight {
+                x
+                y
+                __typename
+              }
+              __typename
             }
             canvasWidth
             canvasHeight
+            adminConfiguration {
+              maxAllowedCircles
+              maxUsersPerAdminBan
+              __typename
+            }
+            __typename
           }
         }
+        __typename
       }
+      __typename
     }
   }
   """

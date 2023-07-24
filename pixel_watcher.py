@@ -9,7 +9,12 @@ import backoff
 from gql import gql
 from gql.dsl import DSLQuery, DSLSchema, dsl_gql
 
-from placedump.common import ctx_aioredis, get_async_gql_client, get_token, headers
+from placedump.common import (
+    ctx_aioredis,
+    get_async_gql_client,
+    handle_exception,
+    headers,
+)
 from placedump.tasks.pixels import update_pixel
 
 log = logging.getLogger("info")
@@ -93,10 +98,8 @@ async def bulk_update(pixels: dict, gql_results: dict):
     await asyncio.gather(*updates)
 
 
-@backoff.on_exception(backoff.fibo, Exception, max_time=30)
+@backoff.on_exception(backoff.fibo, Exception, max_time=30, on_backoff=handle_exception)
 async def graphql_parser():
-    token = await get_token()
-
     # Using `async with` on the client will start a connection on the transport
     # and provide a `session` variable to execute queries on this connection
     async with ctx_aioredis() as redis:
@@ -104,7 +107,7 @@ async def graphql_parser():
             log.info("socket connected")
             pixels_index = {}
 
-            highest_board = await redis.hget("place:meta", "index")
+            highest_board = await redis.hget("place:meta", "index") or 0
             highest_board = max(int(highest_board), 0)
 
             while running:

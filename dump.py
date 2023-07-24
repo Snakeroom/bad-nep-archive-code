@@ -5,7 +5,12 @@ import logging
 import aioredis
 import backoff
 
-from placedump.common import ctx_aioredis, get_async_gql_client, get_token
+from placedump.common import (
+    ctx_aioredis,
+    get_async_gql_client,
+    get_token,
+    handle_exception,
+)
 from placedump.constants import config_gql, socket_key, sub_gql
 from placedump.tasks.parse import parse_message
 
@@ -53,7 +58,7 @@ async def parser_launcher():
         await asyncio.sleep(1)
 
 
-@backoff.on_exception(backoff.fibo, Exception, max_time=30)
+@backoff.on_exception(backoff.fibo, Exception, max_time=30, on_backoff=handle_exception)
 async def graphql_parser(canvas_id):
     # pick the corrent gql schema and pick variables for canvas / config grabs.
     if canvas_id == "config":
@@ -62,7 +67,7 @@ async def graphql_parser(canvas_id):
             "input": {
                 "channel": {
                     "category": "CONFIG",
-                    "teamOwner": "AFD2022",
+                    "teamOwner": "GARLICBREAD",
                 }
             }
         }
@@ -72,7 +77,7 @@ async def graphql_parser(canvas_id):
             "input": {
                 "channel": {
                     "category": "CANVAS",
-                    "teamOwner": "AFD2022",
+                    "teamOwner": "GARLICBREAD",
                     "tag": str(canvas_id),
                 }
             }
