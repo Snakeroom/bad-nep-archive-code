@@ -9,12 +9,7 @@ import backoff
 from gql import gql
 from gql.dsl import DSLQuery, DSLSchema, dsl_gql
 
-from placedump.common import (
-    ctx_aioredis,
-    get_async_gql_client,
-    handle_exception,
-    headers,
-)
+from placedump.common import ctx_aioredis, get_async_gql_client, handle_backoff, headers
 from placedump.tasks.pixels import update_pixel
 
 log = logging.getLogger("info")
@@ -98,7 +93,7 @@ async def bulk_update(pixels: dict, gql_results: dict):
     await asyncio.gather(*updates)
 
 
-@backoff.on_exception(backoff.fibo, Exception, max_time=30, on_backoff=handle_exception)
+@backoff.on_exception(backoff.fibo, Exception, max_time=30, on_backoff=handle_backoff)
 async def graphql_parser():
     # Using `async with` on the client will start a connection on the transport
     # and provide a `session` variable to execute queries on this connection
