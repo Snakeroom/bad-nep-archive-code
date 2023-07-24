@@ -6,3 +6,4 @@ pixels/
 *egg-info/
 .eggs/*
 .env
+.envrc
