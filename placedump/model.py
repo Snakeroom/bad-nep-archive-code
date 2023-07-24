@@ -5,20 +5,17 @@ from enum import unique
 from typing import Generator
 
 from cassandra.cluster import Cluster, Session
+from cassandra.cqlengine import columns
+from cassandra.cqlengine.models import Model
 from sqlalchemy import (
     Column,
     DateTime,
-    Enum,
-    ForeignKey,
-    Index,
     Integer,
-    Numeric,
     String,
     create_engine,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 
 db_url = os.environ.get("DB_URL", "sqlite:///test.db")
@@ -41,6 +38,14 @@ def ctx_cass() -> Generator[Session, None, None]:
     finally:
         if session:
             session.shutdown()
+
+
+class CPixel(Model):
+    board_id = columns.Integer(primary_key=True)
+    x = columns.Integer(partition_key=True)
+    y = columns.Integer(partition_key=True)
+    modified = columns.DateTime(primary_key=True)
+    user = columns.Text()
 
 
 # SQL

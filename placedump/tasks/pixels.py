@@ -13,10 +13,10 @@ from b2sdk.exception import TooManyRequests
 from gql import gql
 from PIL import Image
 from pottery import Redlock
-from sqlalchemy.dialects.postgresql import insert
+from cassandra.cqlengine.query import BatchQuery, BatchType
 
 from placedump.common import ctx_redis, get_b2_api, get_gql_client, get_redis
-from placedump.model import URL, Pixel, ctx_cass, sm
+from placedump.model import CPixel, ctx_cass
 from placedump.tasks import app
 
 log = logging.getLogger(__name__)
@@ -151,6 +151,26 @@ def update_pixel(board_id: int, x: int, y: int, pixel_data: dict):
             """,
             (board_id, x, y, user, timestamp),
         )
+
+
+@app.task()
+def update_pixels(pixels):
+    with BatchQuery(batch_type=BatchType.Unlogged) as b:
+        for pixel in pixels:
+            try:
+                user = pixel["data"]["userInfo"]["username"]
+                timestamp = float(pixel["data"]["lastModifiedTimestamp"]) / 1000.0
+            except (TypeError, KeyError):
+                continue
+
+            timestamp = datetime.datetime.fromtimestamp(timestamp)
+            CPixel.batch(b).if_not_exists().create(
+                board_id=pixel["board"],
+                x=pixel["x"],
+                y=pixel["y"],
+                user=user,
+                modified=timestamp,
+            )
 
 
 @app.task
