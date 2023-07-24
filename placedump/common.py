@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import traceback
 from contextlib import asynccontextmanager, contextmanager
 from functools import lru_cache
@@ -137,11 +138,11 @@ def get_b2_api() -> B2Api:
     return b2_api
 
 
-def handle_backoff(details, logger, log_level):
-    exception = details.pop("exception")
-    if exception:
-        sentry_sdk.capture_exception(exception)
-        traceback.print_exception(exception)
+def handle_backoff(details):
+    exc_info = sys.exc_info()
+
+    if exc_info:
+        sentry_sdk.capture_exception(exc_info)
     else:
-        msg = "%s(...) backing offf (%s)"
-        sentry_sdk.capture_message(msg, log_level)
+        msg = "%s(...) backing off" % (details["target"].__name__,)
+        sentry_sdk.capture_message(msg)
