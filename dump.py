@@ -2,8 +2,8 @@ import asyncio
 import json
 import logging
 
-import aioredis
 import backoff
+from redis import asyncio as aioredis
 
 from placedump.common import (
     ctx_aioredis,

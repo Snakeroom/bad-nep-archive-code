@@ -6,13 +6,13 @@ from functools import lru_cache
 from typing import AsyncGenerator, Generator, Optional
 
 import aiohttp
-import aioredis
 import httpx
 import redis
 from b2sdk.v2 import B2Api, InMemoryAccountInfo
 from gql import Client
 from gql.transport.aiohttp import AIOHTTPTransport
 from gql.transport.websockets import WebsocketsTransport
+from redis import asyncio as aioredis
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost")
 TOKEN_REGEX = re.compile(r'"accessToken":"([^"]+)"')

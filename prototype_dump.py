@@ -7,7 +7,6 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 
 import aiohttp
-import aioredis
 
 from placedump.common import ctx_aioredis, get_token, headers
 
