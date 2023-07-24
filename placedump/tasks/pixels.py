@@ -12,11 +12,12 @@ from async_timeout import timeout
 from b2sdk.exception import TooManyRequests
 from gql import gql
 from PIL import Image
-from placedump.common import ctx_redis, get_b2_api, get_gql_client, get_redis
-from placedump.model import URL, Pixel, sm
-from placedump.tasks import app
 from pottery import Redlock
 from sqlalchemy.dialects.postgresql import insert
+
+from placedump.common import ctx_redis, get_b2_api, get_gql_client, get_redis
+from placedump.model import URL, Pixel, ctx_cass, sm
+from placedump.tasks import app
 
 log = logging.getLogger(__name__)
 CONTRACT_DOWNLOAD_LOCK = 60
@@ -119,16 +120,15 @@ def download_url(board: int, url: str):
             get_non_transparent.delay(board, data)
 
             # Save URL to DB.
-            with sm() as db:
+            with ctx_cass() as db:
                 db.execute(
-                    insert(URL)
-                    .values(
-                        url=url,
-                        size=len(data),
-                    )
-                    .on_conflict_do_nothing(index_elements=["url"])
+                    """
+                    INSERT INTO urls (url, fetched, size)
+                    VALUES (%s, %s, %s)
+                    IF NOT EXISTS
+                    """,
+                    (url, datetime.datetime.utcnow(), len(data)),
                 )
-                db.commit()
 
 
 @app.task()
@@ -142,26 +142,15 @@ def update_pixel(board_id: int, x: int, y: int, pixel_data: dict):
     timestamp = datetime.datetime.fromtimestamp(timestamp)
 
     # Create the DB entry.
-    with sm() as db:
+    with ctx_cass() as db:
         db.execute(
-            insert(Pixel)
-            .values(
-                board_id=board_id,
-                x=x,
-                y=y,
-                user=user,
-                modified=timestamp,
-            )
-            .on_conflict_do_nothing(
-                index_elements=[
-                    "board_id",
-                    "x",
-                    "y",
-                    "modified",
-                ]
-            )
+            """
+            INSERT INTO pixels (board_id, x, y, user, modified)
+            VALUES (%s, %s, %s, %s, %s)
+            IF NOT EXISTS
+            """,
+            (board_id, x, y, user, timestamp),
         )
-        db.commit()
 
 
 @app.task

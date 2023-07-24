@@ -34,7 +34,9 @@ def ctx_cass() -> Generator[Session, None, None]:
     session = None
 
     try:
-        session = cass_cluster.connect()
+        session = cass_cluster.connect(
+            keyspace="placeapp",
+        )
         yield session
     finally:
         if session:
@@ -46,7 +48,10 @@ engine = create_engine(db_url, future=True, pool_size=10, max_overflow=20)
 sm = sessionmaker(engine)
 
 async_engine = create_async_engine(
-    db_url.replace("postgresql://", "postgresql+asyncpg://"),
+    db_url.replace(
+        "postgresql://",
+        "postgresql+asyncpg://",
+    ),
     future=True,
 )
 async_sm = sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
