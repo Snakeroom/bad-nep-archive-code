@@ -5,7 +5,10 @@ from placedump.tasks import app
 from placedump.tasks.pixels import download_url
 
 
-@app.task()
+@app.task(
+    autoretry_for=(Exception,),
+    retry_backoff=2,
+)
 def parse_message(message: str, canvas_id: int = None):
     try:
         payload = json.loads(message)

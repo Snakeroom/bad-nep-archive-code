@@ -10,10 +10,10 @@ import numpy as np
 import sentry_sdk
 from async_timeout import timeout
 from b2sdk.exception import TooManyRequests
+from cassandra.cqlengine.query import BatchQuery, BatchType
 from gql import gql
 from PIL import Image
 from pottery import Redlock
-from cassandra.cqlengine.query import BatchQuery, BatchType
 
 from placedump.common import ctx_redis, get_b2_api, get_gql_client, get_redis
 from placedump.model import CPixel, ctx_cass
@@ -96,8 +96,9 @@ def get_bucket(name: str):
 
 
 @app.task(
-    autoretry_for=(TooManyRequests,),
+    autoretry_for=(Exception,),
     retry_backoff=2,
+    max_retries=10,
 )
 def download_url(board: int, url: str):
     bucket = get_bucket("erin-reddit-afd2022")
@@ -131,7 +132,11 @@ def download_url(board: int, url: str):
                 )
 
 
-@app.task()
+@app.task(
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    max_retries=100,
+)
 def update_pixel(board_id: int, x: int, y: int, pixel_data: dict):
     try:
         user = pixel_data["userInfo"]["username"]
@@ -153,7 +158,11 @@ def update_pixel(board_id: int, x: int, y: int, pixel_data: dict):
         )
 
 
-@app.task()
+@app.task(
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    max_retries=100,
+)
 def update_pixels(pixels):
     with ctx_cass() as db:
         with BatchQuery(batch_type=BatchType.Unlogged, connection=db) as b:
@@ -174,7 +183,11 @@ def update_pixels(pixels):
                 )
 
 
-@app.task
+@app.task(
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    max_retries=10,
+)
 def get_pixel(x: int, y: int, push: bool = True):
     gql_client = get_gql_client()
 
